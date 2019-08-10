@@ -69,7 +69,7 @@ var initDb = function(callback) {
   if (mysql == null) return;
 
   //connect to mysql
-  mysqlClient = mysql.createConnection(mysqlString);
+  mysqlClient = mysql.createConnection(mysqlURL);
   mysqlClient.connect(function(err){
     if (err) {
       callback(err);
