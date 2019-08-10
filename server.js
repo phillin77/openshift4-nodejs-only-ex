@@ -10,66 +10,78 @@ app.use(morgan('combined'))
 
 var port = process.env.PORT || process.env.OPENSHIFT_NODEJS_PORT || 8080,
     ip   = process.env.IP   || process.env.OPENSHIFT_NODEJS_IP || '0.0.0.0',
-    mongoURL = process.env.OPENSHIFT_MONGODB_DB_URL || process.env.MONGO_URL,
-    mongoURLLabel = "";
+    mysqlURL = process.env.OPENSHIFT_MYSQL_DB_URL || process.env.MYSQL_URL,
+    mysqlURLLabel = "";
 
-if (mongoURL == null) {
-  var mongoHost, mongoPort, mongoDatabase, mongoPassword, mongoUser;
+if (mysqlURL == null) {
+  var mysqlHost, mysqlPort, mysqlDatabase, mysqlPassword, mysqlUser;
+  // If using multi-database modified by p.l.77 (MONGODB_DATABASE_SERVICE_NAME & MYSQL_DATABASE_SERVICE_NAME)
+  if (process.env.MYSQL_DATABASE_SERVICE_NAME) {
+    var mysqlServiceName = process.env.MYSQL_DATABASE_SERVICE_NAME.toUpperCase();
+    mysqlHost = process.env[mysqlServiceName + '_SERVICE_HOST'];
+    mysqlPort = process.env[mysqlServiceName + '_SERVICE_PORT'];
+    mysqlDatabase = process.env[mysqlServiceName + '_DATABASE'];
+    mysqlPassword = process.env[mysqlServiceName + '_PASSWORD'];
+    mysqlUser = process.env[mysqlServiceName + '_USER'];
+
   // If using plane old env vars via service discovery
-  if (process.env.DATABASE_SERVICE_NAME) {
-    var mongoServiceName = process.env.DATABASE_SERVICE_NAME.toUpperCase();
-    mongoHost = process.env[mongoServiceName + '_SERVICE_HOST'];
-    mongoPort = process.env[mongoServiceName + '_SERVICE_PORT'];
-    mongoDatabase = process.env[mongoServiceName + '_DATABASE'];
-    mongoPassword = process.env[mongoServiceName + '_PASSWORD'];
-    mongoUser = process.env[mongoServiceName + '_USER'];
+  } else if (process.env.DATABASE_SERVICE_NAME) {
+    var mysqlServiceName = process.env.DATABASE_SERVICE_NAME.toUpperCase();
+    mysqlHost = process.env[mysqlServiceName + '_SERVICE_HOST'];
+    mysqlPort = process.env[mysqlServiceName + '_SERVICE_PORT'];
+    mysqlDatabase = process.env[mysqlServiceName + '_DATABASE'];
+    mysqlPassword = process.env[mysqlServiceName + '_PASSWORD'];
+    mysqlUser = process.env[mysqlServiceName + '_USER'];
 
   // If using env vars from secret from service binding  
   } else if (process.env.database_name) {
-    mongoDatabase = process.env.database_name;
-    mongoPassword = process.env.password;
-    mongoUser = process.env.username;
-    var mongoUriParts = process.env.uri && process.env.uri.split("//");
-    if (mongoUriParts.length == 2) {
-      mongoUriParts = mongoUriParts[1].split(":");
-      if (mongoUriParts && mongoUriParts.length == 2) {
-        mongoHost = mongoUriParts[0];
-        mongoPort = mongoUriParts[1];
+    mysqlDatabase = process.env.database_name;
+    mysqlPassword = process.env.password;
+    mysqlUser = process.env.username;
+    var mysqlUriParts = process.env.uri && process.env.uri.split("//");
+    if (mysqlUriParts.length == 2) {
+      mysqlUriParts = mysqlUriParts[1].split(":");
+      if (mysqlUriParts && mysqlUriParts.length == 2) {
+        mysqlHost = mysqlUriParts[0];
+        mysqlPort = mysqlUriParts[1];
       }
     }
   }
 
-  if (mongoHost && mongoPort && mongoDatabase) {
-    mongoURLLabel = mongoURL = 'mongodb://';
-    if (mongoUser && mongoPassword) {
-      mongoURL += mongoUser + ':' + mongoPassword + '@';
+  if (mysqlHost && mysqlPort && mysqlDatabase) {
+    mysqlURLLabel = mysqlURL = 'mysql://';
+    if (mysqlUser && mysqlPassword) {
+      mysqlURL += mysqlUser + ':' + mysqlPassword + '@';
     }
     // Provide UI label that excludes user id and pw
-    mongoURLLabel += mongoHost + ':' + mongoPort + '/' + mongoDatabase;
-    mongoURL += mongoHost + ':' +  mongoPort + '/' + mongoDatabase;
+    mysqlURLLabel += mysqlHost + ':' + mysqlPort + '/' + mysqlDatabase;
+    mysqlURL += mysqlHost + ':' +  mysqlPort + '/' + mysqlDatabase;
   }
 }
 var db = null,
     dbDetails = new Object();
+var mysqlClient;
 
 var initDb = function(callback) {
-  if (mongoURL == null) return;
+  if (mysqlURL == null) return;
 
-  var mongodb = require('mongodb');
-  if (mongodb == null) return;
+  var mysql = require('mysql');
+  if (mysql == null) return;
 
-  mongodb.connect(mongoURL, function(err, conn) {
+  //connect to mysql
+  mysqlClient = mysql.createConnection(mysqlString);
+  mysqlClient.connect(function(err){
     if (err) {
       callback(err);
       return;
     }
 
-    db = conn;
+    db = mysqlClient;
     dbDetails.databaseName = db.databaseName;
-    dbDetails.url = mongoURLLabel;
-    dbDetails.type = 'MongoDB';
+    dbDetails.url = mysqlURLLabel;
+    dbDetails.type = 'MySQL';
 
-    console.log('Connected to MongoDB at: %s', mongoURL);
+    console.log('Connected to MySQL at: %s', mysqlURL);
   });
 };
 
@@ -80,34 +92,39 @@ app.get('/', function (req, res) {
     initDb(function(err){});
   }
   if (db) {
-    var col = db.collection('counts');
-    // Create a document with request IP and current time of request
-    col.insert({ip: req.ip, date: Date.now()});
-    col.count(function(err, count){
-      if (err) {
-        console.log('Error running count. Message:\n'+err);
-      }
-      res.render('index.html', { pageCountMessage : count, dbInfo: dbDetails });
-    });
+    // TODO: 尚未修改成 MySQL，暫時寫成固定
+    res.render('index.html', { pageCountMessage : null});
+
+    // var col = db.collection('counts');
+    // // Create a document with request IP and current time of request
+    // col.insert({ip: req.ip, date: Date.now()});
+    // col.count(function(err, count){
+    //   if (err) {
+    //     console.log('Error running count. Message:\n'+err);
+    //   }
+    //   res.render('index.html', { pageCountMessage : count, dbInfo: dbDetails });
+    // });
+
   } else {
     res.render('index.html', { pageCountMessage : null});
   }
 });
 
-app.get('/pagecount', function (req, res) {
-  // try to initialize the db on every request if it's not already
-  // initialized.
-  if (!db) {
-    initDb(function(err){});
-  }
-  if (db) {
-    db.collection('counts').count(function(err, count ){
-      res.send('{ pageCount: ' + count + '}');
-    });
-  } else {
-    res.send('{ pageCount: -1 }');
-  }
-});
+// TODO: 尚未修改成 MySQL
+// app.get('/pagecount', function (req, res) {
+//   // try to initialize the db on every request if it's not already
+//   // initialized.
+//   if (!db) {
+//     initDb(function(err){});
+//   }
+//   if (db) {
+//     db.collection('counts').count(function(err, count ){
+//       res.send('{ pageCount: ' + count + '}');
+//     });
+//   } else {
+//     res.send('{ pageCount: -1 }');
+//   }
+// });
 
 // error handling
 app.use(function(err, req, res, next){
@@ -116,7 +133,7 @@ app.use(function(err, req, res, next){
 });
 
 initDb(function(err){
-  console.log('Error connecting to Mongo. Message:\n'+err);
+  console.log('Error connecting to MySQL. Message:\n'+err);
 });
 
 app.listen(port, ip);
