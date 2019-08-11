@@ -17,7 +17,6 @@ app.get('/', function (req, res) {
 
 // Support for health probes. Just return a "200 OK"
 app.get('/health', function (req, res) {
-  log.debug('responding to health probe');
   res.end('ok');
 });
 
